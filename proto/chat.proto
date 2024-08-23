@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package chat;
+
+option go_package = "/;chatpb";
+
+service ChatService {
+    // Stream for bi-directional communication
+    rpc ChatStream(stream ChatMessage) returns (stream ChatMessage);
+}
+
+// Message structure
+message ChatMessage {
+    string user = 1;
+    string message = 2;
+    int64 timestamp = 3;
+}
