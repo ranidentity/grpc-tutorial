@@ -20,6 +20,8 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	ChatService_ChatStream_FullMethodName = "/chat.ChatService/ChatStream"
+	ChatService_JoinRoom_FullMethodName   = "/chat.ChatService/JoinRoom"
+	ChatService_LeaveRoom_FullMethodName  = "/chat.ChatService/LeaveRoom"
 )
 
 // ChatServiceClient is the client API for ChatService service.
@@ -28,6 +30,8 @@ const (
 type ChatServiceClient interface {
 	// Stream for bi-directional communication
 	ChatStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, ChatMessage], error)
+	JoinRoom(ctx context.Context, in *JoinRoomRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatMessage], error)
+	LeaveRoom(ctx context.Context, in *LeaveRoomRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatMessage], error)
 }
 
 type chatServiceClient struct {
@@ -51,12 +55,52 @@ func (c *chatServiceClient) ChatStream(ctx context.Context, opts ...grpc.CallOpt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ChatService_ChatStreamClient = grpc.BidiStreamingClient[ChatMessage, ChatMessage]
 
+func (c *chatServiceClient) JoinRoom(ctx context.Context, in *JoinRoomRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatMessage], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[1], ChatService_JoinRoom_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[JoinRoomRequest, ChatMessage]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ChatService_JoinRoomClient = grpc.ServerStreamingClient[ChatMessage]
+
+func (c *chatServiceClient) LeaveRoom(ctx context.Context, in *LeaveRoomRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatMessage], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[2], ChatService_LeaveRoom_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[LeaveRoomRequest, ChatMessage]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ChatService_LeaveRoomClient = grpc.ServerStreamingClient[ChatMessage]
+
 // ChatServiceServer is the server API for ChatService service.
 // All implementations must embed UnimplementedChatServiceServer
 // for forward compatibility.
 type ChatServiceServer interface {
 	// Stream for bi-directional communication
 	ChatStream(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error
+	JoinRoom(*JoinRoomRequest, grpc.ServerStreamingServer[ChatMessage]) error
+	LeaveRoom(*LeaveRoomRequest, grpc.ServerStreamingServer[ChatMessage]) error
 	mustEmbedUnimplementedChatServiceServer()
 }
 
@@ -69,6 +113,12 @@ type UnimplementedChatServiceServer struct{}
 
 func (UnimplementedChatServiceServer) ChatStream(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method ChatStream not implemented")
+}
+func (UnimplementedChatServiceServer) JoinRoom(*JoinRoomRequest, grpc.ServerStreamingServer[ChatMessage]) error {
+	return status.Errorf(codes.Unimplemented, "method JoinRoom not implemented")
+}
+func (UnimplementedChatServiceServer) LeaveRoom(*LeaveRoomRequest, grpc.ServerStreamingServer[ChatMessage]) error {
+	return status.Errorf(codes.Unimplemented, "method LeaveRoom not implemented")
 }
 func (UnimplementedChatServiceServer) mustEmbedUnimplementedChatServiceServer() {}
 func (UnimplementedChatServiceServer) testEmbeddedByValue()                     {}
@@ -98,6 +148,28 @@ func _ChatService_ChatStream_Handler(srv interface{}, stream grpc.ServerStream) 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ChatService_ChatStreamServer = grpc.BidiStreamingServer[ChatMessage, ChatMessage]
 
+func _ChatService_JoinRoom_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(JoinRoomRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ChatServiceServer).JoinRoom(m, &grpc.GenericServerStream[JoinRoomRequest, ChatMessage]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ChatService_JoinRoomServer = grpc.ServerStreamingServer[ChatMessage]
+
+func _ChatService_LeaveRoom_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(LeaveRoomRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ChatServiceServer).LeaveRoom(m, &grpc.GenericServerStream[LeaveRoomRequest, ChatMessage]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ChatService_LeaveRoomServer = grpc.ServerStreamingServer[ChatMessage]
+
 // ChatService_ServiceDesc is the grpc.ServiceDesc for ChatService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -111,6 +183,16 @@ var ChatService_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _ChatService_ChatStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "JoinRoom",
+			Handler:       _ChatService_JoinRoom_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "LeaveRoom",
+			Handler:       _ChatService_LeaveRoom_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "chat.proto",

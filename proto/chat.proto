@@ -4,14 +4,25 @@ package chat;
 
 option go_package = "/;chatpb";
 
-service ChatService {
-    // Stream for bi-directional communication
-    rpc ChatStream(stream ChatMessage) returns (stream ChatMessage);
-}
-
 // Message structure
 message ChatMessage {
     string user = 1;
     string message = 2;
     int64 timestamp = 3;
+    string room_id =4;
+}
+
+message JoinRoomRequest{
+    string room_id = 1;
+}
+
+message LeaveRoomRequest{
+    string room_id = 1;
+}
+
+service ChatService {
+    // Stream for bi-directional communication
+    rpc ChatStream(stream ChatMessage) returns (stream ChatMessage);
+    rpc JoinRoom(JoinRoomRequest) returns (stream ChatMessage);
+    rpc LeaveRoom(LeaveRoomRequest) returns (stream ChatMessage);
 }

@@ -1,4 +1,4 @@
-module grpc-tuto-2
+module grpc-tutorial
 
 go 1.22.5
 
