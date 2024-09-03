@@ -65,24 +65,35 @@ func (s *server) JoinRoom(req *chatpb.JoinRoomRequest, stream chatpb.ChatService
 
 	roomID := req.GetRoomId()
 	s.rooms[roomID] = append(s.rooms[roomID], stream)
-	fmt.Printf("attempting to welcome user... %s \n", roomID)
+
 	welcomeMsg := &chatpb.ChatMessage{
 		RoomId:  roomID,
-		Message: "A new user has joined the room!",
+		Message: "Server: Welcome!",
 	}
 	s.BroadcastMessage(context.Background(), welcomeMsg)
+
+	// go func() {
+	// 	for {
+	// 		msg, err := stream.Recv()
+	// 		if err != nil {
+	// 			if err == io.EOF {
+	// 				fmt.Println("Client stream closed")
+	// 				break
+	// 			}
+	// 			log.Printf("Error receiving message: %v", err)
+	// 			break
+	// 		}
+	// 		// Broadcast received message to the room
+	// 		s.BroadcastMessage(context.Background(), msg)
+	// 	}
+
+	// 	// When the stream is done, remove the client from the room
+	// 	s.removeStreamFromRoom(roomID, stream)
+	// }()
 
 	<-stream.Context().Done()
 	s.removeStreamFromRoom(roomID, stream)
 
-	// for {
-	// 	select {
-	// 	case <-stream.Context().Done():
-	// 		// Client closed the stream
-	// 		s.removeStreamFromRoom(roomID, stream)
-	// 		return nil
-	// 	}
-	// }
 	return nil
 }
 

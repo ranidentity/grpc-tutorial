@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"grpc-tutorial/chatpb"
@@ -36,6 +37,23 @@ func joinRoom(client chatpb.ChatServiceClient, roomID string) {
 	if err != nil {
 		log.Fatalf("Error joining room: %v", err)
 	}
+	// Mutex to ensure synchronized access to the stream
+	var mu sync.Mutex
+
+	// Goroutine to receive messages from the server
+	go func() {
+		for {
+			in, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					log.Println("Stream closed by server.")
+					return
+				}
+				log.Fatalf("Error receiving message: %v", err)
+			}
+			log.Printf("%s: %s", in.User, in.Message)
+		}
+	}()
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -49,31 +67,26 @@ func joinRoom(client chatpb.ChatServiceClient, roomID string) {
 			Message:   text,
 			Timestamp: time.Now().Unix(),
 		}
+		mu.Lock()
 		// Assuming you have a method to send a message in the room (like ChatStream)
 		if err := stream.SendMsg(msg); err != nil {
+			mu.Unlock()
 			if err == io.EOF {
 				log.Println("Stream closed by server. Cannot send message.")
 				return
 			}
 			log.Fatalf("Error sending message: %v", err)
 		}
+		mu.Unlock()
 	}
 
-	// Goroutine to receive messages from the server
-	go func() {
-		for {
-			in, err := stream.Recv()
-			if err != nil {
-				if err == io.EOF {
-					log.Println("Stream closed by server.")
-					return
-				}
-				log.Fatalf("Error receiving message: %v", err)
-
-			}
-			log.Printf("%s: %s", in.User, in.Message)
-		}
-	}()
+	// Close the stream after sending all messages
+	mu.Lock()
+	if err := stream.CloseSend(); err != nil {
+		mu.Unlock()
+		log.Fatalf("Failed to close send stream: %v", err)
+	}
+	mu.Unlock()
 
 	// Handle scanner errors
 	if err := scanner.Err(); err != nil {
