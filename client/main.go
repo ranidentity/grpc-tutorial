@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -24,7 +25,12 @@ func main() {
 	defer conn.Close()
 
 	client := chatpb.NewChatServiceClient(conn)
-	roomID := "room1"
+
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("Enter room: ")
+	scanner.Scan()
+	roomID := scanner.Text()
+
 	joinRoom(client, roomID)
 }
 

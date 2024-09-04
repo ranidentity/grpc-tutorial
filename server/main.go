@@ -28,9 +28,6 @@ func NewServer() *server {
 	}
 }
 func (s *server) ChatStream(stream chatpb.ChatService_ChatStreamServer) error {
-	fmt.Println("chat stream working")
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	var currentRoom string
 	for {
 		msg, err := stream.Recv()
@@ -44,9 +41,13 @@ func (s *server) ChatStream(stream chatpb.ChatService_ChatStreamServer) error {
 		// If the room_id is provided, use it to route the message
 		if msg.RoomId != "" {
 			currentRoom = msg.RoomId
+			s.mu.Lock()
 			s.rooms[currentRoom] = append(s.rooms[currentRoom], stream)
+			s.mu.Unlock()
 		}
+
 		// Broadcast the message to the correct room
+		// s.BroadcastMessage(context.Background(), msg)
 		for _, s := range s.rooms[currentRoom] {
 			if err := s.Send(msg); err != nil {
 				log.Printf("Failed to send message to room %s: %v", currentRoom, err)
@@ -57,50 +58,64 @@ func (s *server) ChatStream(stream chatpb.ChatService_ChatStreamServer) error {
 
 func (s *server) JoinRoom(req *chatpb.JoinRoomRequest, stream chatpb.ChatService_JoinRoomServer) error {
 	s.mu.Lock()
-	defer func() {
-		fmt.Println("Unlocking JoinRoom")
-		s.mu.Unlock()
-	}()
-	fmt.Println("Locked successfully, JoinRoom...")
-
+	// defer
 	roomID := req.GetRoomId()
+	// If the room doesn't exist, create it
+	if _, ok := s.rooms[roomID]; !ok {
+		fmt.Printf("Creating new room: %s\n", roomID)
+		s.rooms[roomID] = []chatpb.ChatService_JoinRoomServer{}
+	}
 	s.rooms[roomID] = append(s.rooms[roomID], stream)
+	s.mu.Unlock()
 
 	welcomeMsg := &chatpb.ChatMessage{
 		RoomId:  roomID,
-		Message: "Server: Welcome!",
+		Message: fmt.Sprintf("Server: Welcome to %s!", roomID),
 	}
 	s.BroadcastMessage(context.Background(), welcomeMsg)
+	// Listen for messages from the client
+	go func() {
+		defer func() {
+			s.mu.Lock()
+			s.removeStreamFromRoom(roomID, stream)
+			if len(s.rooms[roomID]) == 0 {
+				delete(s.rooms, roomID)
+			}
+			s.mu.Unlock()
+			// for {
+			// 	// If we are done, exit the goroutine
+			// 	<-stream.Context().Done()
+			// 	break
+			// }
+			// // Remove the client from the room when done
+			// s.removeStreamFromRoom(roomID, stream)
+		}()
+		// Receiving messages from client
+		for {
+			msg, err := stream.Recv()
+			if err == io.EOF {
+				fmt.Println("Client stream closed")
+				return
+			}
+			if err != nil {
+				log.Printf("Error receiving message: %v", err)
+				return
+			}
 
-	// go func() {
-	// 	for {
-	// 		msg, err := stream.Recv()
-	// 		if err != nil {
-	// 			if err == io.EOF {
-	// 				fmt.Println("Client stream closed")
-	// 				break
-	// 			}
-	// 			log.Printf("Error receiving message: %v", err)
-	// 			break
-	// 		}
-	// 		// Broadcast received message to the room
-	// 		s.BroadcastMessage(context.Background(), msg)
-	// 	}
-
-	// 	// When the stream is done, remove the client from the room
-	// 	s.removeStreamFromRoom(roomID, stream)
-	// }()
-
+			// Broadcast the received message to the room
+			s.BroadcastMessage(context.Background(), msg)
+		}
+	}()
+	// Wait until the stream is done
 	<-stream.Context().Done()
-	s.removeStreamFromRoom(roomID, stream)
 
 	return nil
 }
 
 // Helper function to remove a stream from a room
 func (s *server) removeStreamFromRoom(roomID string, stream chatpb.ChatService_JoinRoomServer) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// s.mu.Lock()
+	// defer s.mu.Unlock()
 	streams := s.rooms[roomID]
 	for i, st := range streams {
 		if st == stream {
@@ -109,7 +124,7 @@ func (s *server) removeStreamFromRoom(roomID string, stream chatpb.ChatService_J
 			break
 		}
 	}
-	fmt.Printf("Closing room... \n")
+	fmt.Printf("Closing room... %s \n", roomID)
 }
 
 func (s *server) BroadcastMessage(ctx context.Context, msg *chatpb.ChatMessage) {
