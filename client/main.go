@@ -30,36 +30,31 @@ func main() {
 	fmt.Print("Enter room: ")
 	scanner.Scan()
 	roomID := scanner.Text()
-
-	joinRoom(client, roomID)
+	fmt.Print("Enter alias naame: ")
+	scanner.Scan()
+	aliasname := scanner.Text()
+	joinRoom(client, roomID, aliasname)
 }
 
-func joinRoom(client chatpb.ChatServiceClient, roomID string) {
-	req := &chatpb.JoinRoomRequest{
-		RoomId: roomID,
-	}
-
-	stream, err := client.JoinRoom(context.Background(), req)
+func joinRoom(client chatpb.ChatServiceClient, roomID string, aliasname string) {
+	stream, err := client.JoinRoom(context.Background())
 	if err != nil {
 		log.Fatalf("Error joining room: %v", err)
 	}
+	msg := &chatpb.ChatMessage{
+		RoomId:    roomID,
+		User:      aliasname, // Replace with actual user name
+		Timestamp: time.Now().Unix(),
+	}
+	if err := stream.SendMsg(msg); err != nil {
+		log.Fatalf("Error sending message: %v", err)
+	}
+
 	// Mutex to ensure synchronized access to the stream
 	var mu sync.Mutex
 
 	// Goroutine to receive messages from the server
-	go func() {
-		for {
-			in, err := stream.Recv()
-			if err != nil {
-				if err == io.EOF {
-					log.Println("Stream closed by server.")
-					return
-				}
-				log.Fatalf("Error receiving message: %v", err)
-			}
-			log.Printf("%s: %s", in.User, in.Message)
-		}
-	}()
+	go incomingMessage(stream)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -69,7 +64,7 @@ func joinRoom(client chatpb.ChatServiceClient, roomID string) {
 		}
 		msg := &chatpb.ChatMessage{
 			RoomId:    roomID,
-			User:      "ClientName", // Replace with actual user name
+			User:      aliasname, // Replace with actual user name
 			Message:   text,
 			Timestamp: time.Now().Unix(),
 		}
@@ -97,5 +92,19 @@ func joinRoom(client chatpb.ChatServiceClient, roomID string) {
 	// Handle scanner errors
 	if err := scanner.Err(); err != nil {
 		log.Fatalf("Error reading from input: %v", err)
+	}
+}
+
+func incomingMessage(stream chatpb.ChatService_JoinRoomClient) {
+	for {
+		in, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				log.Println("Stream closed by server.")
+				return
+			}
+			log.Fatalf("Error receiving message: %v", err)
+		}
+		log.Printf("[%s] %s: %s", in.RoomId, in.User, in.Message)
 	}
 }

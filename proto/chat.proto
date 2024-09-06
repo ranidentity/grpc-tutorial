@@ -23,6 +23,6 @@ message LeaveRoomRequest{
 service ChatService {
     // Stream for bi-directional communication
     rpc ChatStream(stream ChatMessage) returns (stream ChatMessage);
-    rpc JoinRoom(JoinRoomRequest) returns (stream ChatMessage);
+    rpc JoinRoom(stream ChatMessage) returns (stream ChatMessage);
     rpc LeaveRoom(LeaveRoomRequest) returns (stream ChatMessage);
 }

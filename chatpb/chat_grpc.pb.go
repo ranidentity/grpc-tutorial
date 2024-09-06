@@ -30,7 +30,7 @@ const (
 type ChatServiceClient interface {
 	// Stream for bi-directional communication
 	ChatStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, ChatMessage], error)
-	JoinRoom(ctx context.Context, in *JoinRoomRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatMessage], error)
+	JoinRoom(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, ChatMessage], error)
 	LeaveRoom(ctx context.Context, in *LeaveRoomRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatMessage], error)
 }
 
@@ -55,24 +55,18 @@ func (c *chatServiceClient) ChatStream(ctx context.Context, opts ...grpc.CallOpt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ChatService_ChatStreamClient = grpc.BidiStreamingClient[ChatMessage, ChatMessage]
 
-func (c *chatServiceClient) JoinRoom(ctx context.Context, in *JoinRoomRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatMessage], error) {
+func (c *chatServiceClient) JoinRoom(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, ChatMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[1], ChatService_JoinRoom_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[JoinRoomRequest, ChatMessage]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
+	x := &grpc.GenericClientStream[ChatMessage, ChatMessage]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ChatService_JoinRoomClient = grpc.ServerStreamingClient[ChatMessage]
+type ChatService_JoinRoomClient = grpc.BidiStreamingClient[ChatMessage, ChatMessage]
 
 func (c *chatServiceClient) LeaveRoom(ctx context.Context, in *LeaveRoomRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ChatMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -99,7 +93,7 @@ type ChatService_LeaveRoomClient = grpc.ServerStreamingClient[ChatMessage]
 type ChatServiceServer interface {
 	// Stream for bi-directional communication
 	ChatStream(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error
-	JoinRoom(*JoinRoomRequest, grpc.ServerStreamingServer[ChatMessage]) error
+	JoinRoom(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error
 	LeaveRoom(*LeaveRoomRequest, grpc.ServerStreamingServer[ChatMessage]) error
 	mustEmbedUnimplementedChatServiceServer()
 }
@@ -114,7 +108,7 @@ type UnimplementedChatServiceServer struct{}
 func (UnimplementedChatServiceServer) ChatStream(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method ChatStream not implemented")
 }
-func (UnimplementedChatServiceServer) JoinRoom(*JoinRoomRequest, grpc.ServerStreamingServer[ChatMessage]) error {
+func (UnimplementedChatServiceServer) JoinRoom(grpc.BidiStreamingServer[ChatMessage, ChatMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method JoinRoom not implemented")
 }
 func (UnimplementedChatServiceServer) LeaveRoom(*LeaveRoomRequest, grpc.ServerStreamingServer[ChatMessage]) error {
@@ -149,15 +143,11 @@ func _ChatService_ChatStream_Handler(srv interface{}, stream grpc.ServerStream) 
 type ChatService_ChatStreamServer = grpc.BidiStreamingServer[ChatMessage, ChatMessage]
 
 func _ChatService_JoinRoom_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(JoinRoomRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(ChatServiceServer).JoinRoom(m, &grpc.GenericServerStream[JoinRoomRequest, ChatMessage]{ServerStream: stream})
+	return srv.(ChatServiceServer).JoinRoom(&grpc.GenericServerStream[ChatMessage, ChatMessage]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ChatService_JoinRoomServer = grpc.ServerStreamingServer[ChatMessage]
+type ChatService_JoinRoomServer = grpc.BidiStreamingServer[ChatMessage, ChatMessage]
 
 func _ChatService_LeaveRoom_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(LeaveRoomRequest)
@@ -188,6 +178,7 @@ var ChatService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "JoinRoom",
 			Handler:       _ChatService_JoinRoom_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
 		},
 		{
 			StreamName:    "LeaveRoom",

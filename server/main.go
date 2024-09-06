@@ -16,17 +16,32 @@ import (
 
 type server struct {
 	chatpb.UnimplementedChatServiceServer
-	mu sync.Mutex
-	// clients map[string][]chatpb.ChatService_JoinRoomServer
-	// clients map[chatpb.ChatService_ChatStreamServer]bool
-	rooms map[string][]chatpb.ChatService_JoinRoomServer
+	mu    sync.Mutex
+	rooms map[string][]chatpb.ChatService_ChatStreamServer
 }
 
 func NewServer() *server {
+	//ChatServiceServer
 	return &server{
-		rooms: make(map[string][]chatpb.ChatService_JoinRoomServer),
+		rooms: make(map[string][]chatpb.ChatService_ChatStreamServer),
 	}
 }
+
+func main() {
+	lis, err := net.Listen("tcp", ":50051")
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", err)
+	}
+
+	grpcServer := grpc.NewServer()
+	chatpb.RegisterChatServiceServer(grpcServer, NewServer())
+
+	fmt.Println("Chat server started on :50051")
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("Failed to serve: %v", err)
+	}
+}
+
 func (s *server) ChatStream(stream chatpb.ChatService_ChatStreamServer) error {
 	var currentRoom string
 	for {
@@ -47,7 +62,6 @@ func (s *server) ChatStream(stream chatpb.ChatService_ChatStreamServer) error {
 		}
 
 		// Broadcast the message to the correct room
-		// s.BroadcastMessage(context.Background(), msg)
 		for _, s := range s.rooms[currentRoom] {
 			if err := s.Send(msg); err != nil {
 				log.Printf("Failed to send message to room %s: %v", currentRoom, err)
@@ -56,13 +70,16 @@ func (s *server) ChatStream(stream chatpb.ChatService_ChatStreamServer) error {
 	}
 }
 
-func (s *server) JoinRoom(req *chatpb.JoinRoomRequest, stream chatpb.ChatService_JoinRoomServer) error {
+// func (s *server) JoinRoom(req *chatpb.JoinRoomRequest, stream chatpb.ChatService_JoinRoomServer) error {
+func (s *server) JoinRoom(stream chatpb.ChatService_JoinRoomServer) error {
+	msg, err := stream.Recv()
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
-	// defer
-	roomID := req.GetRoomId()
+	roomID := msg.GetRoomId()
 	// If the room doesn't exist, create it
 	if _, ok := s.rooms[roomID]; !ok {
-		fmt.Printf("Creating new room: %s\n", roomID)
 		s.rooms[roomID] = []chatpb.ChatService_JoinRoomServer{}
 	}
 	s.rooms[roomID] = append(s.rooms[roomID], stream)
@@ -70,10 +87,10 @@ func (s *server) JoinRoom(req *chatpb.JoinRoomRequest, stream chatpb.ChatService
 
 	welcomeMsg := &chatpb.ChatMessage{
 		RoomId:  roomID,
-		Message: fmt.Sprintf("Server: Welcome to %s!", roomID),
+		Message: fmt.Sprintf("Server: %s, Welcome to %s!", msg.User, roomID),
 	}
 	s.BroadcastMessage(context.Background(), welcomeMsg)
-	// Listen for messages from the client
+	// Continuously listen for messages from the client
 	go func() {
 		defer func() {
 			s.mu.Lock()
@@ -82,13 +99,6 @@ func (s *server) JoinRoom(req *chatpb.JoinRoomRequest, stream chatpb.ChatService
 				delete(s.rooms, roomID)
 			}
 			s.mu.Unlock()
-			// for {
-			// 	// If we are done, exit the goroutine
-			// 	<-stream.Context().Done()
-			// 	break
-			// }
-			// // Remove the client from the room when done
-			// s.removeStreamFromRoom(roomID, stream)
 		}()
 		// Receiving messages from client
 		for {
@@ -111,11 +121,12 @@ func (s *server) JoinRoom(req *chatpb.JoinRoomRequest, stream chatpb.ChatService
 
 	return nil
 }
+func (s *server) LeaveRoom(req *chatpb.LeaveRoomRequest, stream chatpb.ChatService_LeaveRoomServer) error {
+	return nil
+}
 
 // Helper function to remove a stream from a room
 func (s *server) removeStreamFromRoom(roomID string, stream chatpb.ChatService_JoinRoomServer) {
-	// s.mu.Lock()
-	// defer s.mu.Unlock()
 	streams := s.rooms[roomID]
 	for i, st := range streams {
 		if st == stream {
@@ -134,26 +145,12 @@ func (s *server) BroadcastMessage(ctx context.Context, msg *chatpb.ChatMessage) 
 		log.Printf("Room %s does not exist or has no clients", roomID)
 		return
 	}
+	fmt.Printf("[%s] %s: %s\n", roomID, msg.User, msg.Message)
 
 	for _, stream := range streams {
 		if err := stream.Send(msg); err != nil {
 			log.Printf("Error sending message to client: %v", err)
 		}
-	}
-}
-
-func main() {
-	lis, err := net.Listen("tcp", ":50051")
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
-
-	grpcServer := grpc.NewServer()
-	chatpb.RegisterChatServiceServer(grpcServer, NewServer())
-
-	fmt.Println("Chat server started on :50051")
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("Failed to serve: %v", err)
 	}
 }
 
